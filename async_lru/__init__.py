@@ -1,5 +1,7 @@
 import asyncio
+import contextvars
 import dataclasses
+import inspect
 import sys
 from asyncio.coroutines import _is_coroutine  # type: ignore[attr-defined]
 from functools import _CacheInfo, _make_key, partial, partialmethod
@@ -38,6 +40,8 @@ _R = TypeVar("_R")
 _Coro = Coroutine[Any, Any, _R]
 _CB = Callable[..., _Coro[_R]]
 _CBP = Union[_CB[_R], "partial[_Coro[_R]]", "partialmethod[_Coro[_R]]"]
+
+_CV_source_stack = contextvars.ContextVar("source_stack")
 
 
 @final
@@ -213,7 +217,9 @@ class _LRUCacheWrapper(Generic[_R]):
 
         fut = loop.create_future()
         coro = self.__wrapped__(*fn_args, **fn_kwargs)
+        token = _CV_source_stack.set(inspect.stack())
         task: asyncio.Task[_R] = loop.create_task(coro)
+        _CV_source_stack.reset(token)
         self.__tasks.add(task)
         task.add_done_callback(partial(self._task_done_callback, fut, key))
 
